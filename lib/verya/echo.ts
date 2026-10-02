@@ -193,7 +193,7 @@ export function tickEcho(project: VeryaProject, now: number, elapsedWorldMinutes
   const detailedIds = new Set(rankedByDistance.slice(0, project.settings.maxDetailedNpcs).map((item) => item.id));
 
   const npcs = project.npcs.map((original) => {
-    let npc = applyNeeds(original, elapsedWorldMinutes);
+    const npc = applyNeeds(original, elapsedWorldMinutes);
     const distance = rankedByDistance.find((item) => item.id === npc.id)?.distance ?? Number.POSITIVE_INFINITY;
     const tier = detailedIds.has(npc.id) && distance < 14 ? "near" : distance < 40 ? "far" : "background";
     const intervalBase = tier === "near" ? 22_000 : tier === "far" ? 65_000 : 180_000;
