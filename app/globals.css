@@ -2369,3 +2369,59 @@ button.pill {
     grid-template-columns: 16px 1fr 64px repeat(3, 48px) 23px;
   }
 }
+
+
+/* Startup-safe viewport fallback: keeps the editor usable when WebGL is unavailable. */
+.viewport-safe-fallback {
+  position: relative;
+  overflow: hidden;
+  background: #0d131d;
+}
+.safe-map-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(81, 105, 132, .12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(81, 105, 132, .12) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+.safe-map-entity {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 150px;
+  padding: 6px 9px;
+  border: 1px solid #50657c;
+  border-radius: 999px;
+  background: rgba(9, 15, 23, .88);
+  color: #dce8f5;
+  font: 600 11px/1.1 system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+}
+.safe-map-entity i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.safe-map-entity.selected {
+  border-width: 2px;
+  color: #fff3ce;
+}
+.route-error-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #080c12;
+}
+.route-error-card {
+  width: min(560px, 100%);
+  border: 1px solid #26374b;
+  border-radius: 18px;
+  padding: 28px;
+  background: #111823;
+}

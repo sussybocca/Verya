@@ -1,30 +1,20 @@
-const CACHE = "verya-shell-v1";
-const CORE = ["/"];
+const VERYA_CACHE_PREFIX = "verya-";
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)));
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-  );
-  self.clients.claim();
-});
-
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key.startsWith(VERYA_CACHE_PREFIX)).map((key) => caches.delete(key)));
+      await self.registration.unregister();
+      await self.clients.claim();
+    })()
   );
 });
+
+// This worker intentionally has no fetch handler.
+// The previous worker cached Next.js/App Router responses and could retain
+// incompatible RSC or asset responses across deployments.

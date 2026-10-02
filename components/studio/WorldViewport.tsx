@@ -1,7 +1,7 @@
 "use client";
 
-import { Canvas, useThree } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { WorldEntity } from "@/lib/verya/types";
 
@@ -28,6 +28,8 @@ function entityColor(kind: WorldEntity["kind"], selected: boolean) {
 
 function CameraControls() {
   const { camera, gl } = useThree();
+  const controlsRef = useRef<OrbitControls | null>(null);
+
   useEffect(() => {
     const controls = new OrbitControls(camera, gl.domElement);
     controls.target.set(7, 0.5, 7);
@@ -36,14 +38,19 @@ function CameraControls() {
     controls.minDistance = 5;
     controls.maxDistance = 42;
     controls.maxPolarAngle = Math.PI * 0.48;
-    const frame = () => controls.update();
-    controls.addEventListener("change", frame);
     controls.update();
+    controlsRef.current = controls;
+
     return () => {
-      controls.removeEventListener("change", frame);
+      controlsRef.current = null;
       controls.dispose();
     };
   }, [camera, gl]);
+
+  useFrame(() => {
+    controlsRef.current?.update();
+  });
+
   return null;
 }
 
@@ -100,41 +107,124 @@ function EntityMesh({ entity, selected, onSelect }: { entity: WorldEntity; selec
   );
 }
 
-export default function WorldViewport({ entities, selectedId, onSelect, playMode }: Props) {
+function SafeMapFallback({ entities, selectedId, onSelect, playMode, message }: Props & { message: string }) {
   return (
-    <div className="world-viewport">
-      <Canvas
-        shadows
-        camera={{ position: [15, 13, 18], fov: 43, near: 0.1, far: 100 }}
-        onPointerMissed={() => onSelect(undefined)}
-      >
-        <color attach="background" args={[playMode ? "#111b28" : "#0d131d"]} />
-        <fog attach="fog" args={[playMode ? "#111b28" : "#0d131d", 24, 58]} />
-        <CameraControls />
-        <ambientLight intensity={0.95} />
-        <directionalLight position={[10, 16, 8]} intensity={2.1} castShadow />
-        <hemisphereLight args={["#9dc8ff", "#263528", 0.75]} />
-        <gridHelper args={[34, 34, "#314155", "#1e2a38"]} position={[7, 0, 7]} />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[7, -0.03, 7]} receiveShadow>
-          <planeGeometry args={[34, 34]} />
-          <meshStandardMaterial color="#151d25" roughness={1} />
-        </mesh>
-        {entities.filter((entity) => entity.active).map((entity) => (
-          <EntityMesh
-            key={entity.id}
-            entity={entity}
-            selected={entity.id === selectedId}
-            onSelect={() => onSelect(entity.id)}
-          />
-        ))}
-      </Canvas>
+    <div className="world-viewport viewport-safe-fallback">
+      <div className="safe-map-grid" onClick={() => onSelect(undefined)}>
+        {entities.filter((entity) => entity.active && entity.visible).map((entity) => {
+          const left = Math.max(5, Math.min(95, 8 + (entity.position.x / 16) * 84));
+          const top = Math.max(7, Math.min(91, 8 + (entity.position.z / 12) * 82));
+          return (
+            <button
+              key={entity.id}
+              type="button"
+              className={entity.id === selectedId ? "safe-map-entity selected" : "safe-map-entity"}
+              style={{ left: `${left}%`, top: `${top}%`, borderColor: entityColor(entity.kind, entity.id === selectedId) }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelect(entity.id);
+              }}
+              title={entity.name}
+            >
+              <i style={{ background: entityColor(entity.kind, entity.id === selectedId) }} />
+              <span>{entity.name}</span>
+            </button>
+          );
+        })}
+      </div>
       <div className="viewport-badge">
         <span className={playMode ? "live-dot live" : "live-dot"} />
-        {playMode ? "PLAYING WORLD" : "AUTHORING WORLD"}
+        {playMode ? "PLAYING WORLD" : "SAFE MAP VIEW"}
       </div>
-      <div className="viewport-help">
-        Click an object to inspect it · Scene uses real Three.js/WebGL geometry
-      </div>
+      <div className="viewport-help">{message}</div>
     </div>
+  );
+}
+
+class ViewportBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("Verya 3D viewport failed; using safe map fallback.", error);
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+export default function WorldViewport(props: Props) {
+  const { entities, selectedId, onSelect, playMode } = props;
+  const [webgl, setWebgl] = useState<"checking" | "ready" | "unavailable">("checking");
+
+  useEffect(() => {
+    try {
+      const probe = document.createElement("canvas");
+      const context =
+        probe.getContext("webgl2", { failIfMajorPerformanceCaveat: false }) ??
+        probe.getContext("webgl", { failIfMajorPerformanceCaveat: false });
+      setWebgl(context ? "ready" : "unavailable");
+      context?.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+      setWebgl("unavailable");
+    }
+  }, []);
+
+  const fallback = (
+    <SafeMapFallback
+      {...props}
+      message={
+        webgl === "checking"
+          ? "Checking 3D support…"
+          : "3D rendering was unavailable, so Verya switched to the safe map view instead of crashing."
+      }
+    />
+  );
+
+  if (webgl !== "ready") return fallback;
+
+  return (
+    <ViewportBoundary fallback={fallback}>
+      <div className="world-viewport">
+        <Canvas
+          shadows
+          dpr={[1, 1.5]}
+          gl={{ antialias: true, powerPreference: "high-performance", failIfMajorPerformanceCaveat: false }}
+          camera={{ position: [15, 13, 18], fov: 43, near: 0.1, far: 100 }}
+          onPointerMissed={() => onSelect(undefined)}
+        >
+          <color attach="background" args={[playMode ? "#111b28" : "#0d131d"]} />
+          <fog attach="fog" args={[playMode ? "#111b28" : "#0d131d", 24, 58]} />
+          <CameraControls />
+          <ambientLight intensity={0.95} />
+          <directionalLight position={[10, 16, 8]} intensity={2.1} castShadow />
+          <hemisphereLight args={["#9dc8ff", "#263528", 0.75]} />
+          <gridHelper args={[34, 34, "#314155", "#1e2a38"]} position={[7, 0, 7]} />
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[7, -0.03, 7]} receiveShadow>
+            <planeGeometry args={[34, 34]} />
+            <meshStandardMaterial color="#151d25" roughness={1} />
+          </mesh>
+          {entities.filter((entity) => entity.active).map((entity) => (
+            <EntityMesh
+              key={entity.id}
+              entity={entity}
+              selected={entity.id === selectedId}
+              onSelect={() => onSelect(entity.id)}
+            />
+          ))}
+        </Canvas>
+        <div className="viewport-badge">
+          <span className={playMode ? "live-dot live" : "live-dot"} />
+          {playMode ? "PLAYING WORLD" : "AUTHORING WORLD"}
+        </div>
+        <div className="viewport-help">
+          Click an object to inspect it · Scene uses real Three.js/WebGL geometry
+        </div>
+      </div>
+    </ViewportBoundary>
   );
 }
