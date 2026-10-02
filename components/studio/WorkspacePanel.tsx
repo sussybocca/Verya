@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import type {
+  EntityKind,
   ImprintRule,
   Npc,
   PropertyValue,
@@ -98,6 +99,15 @@ function updateNpc(
   };
 }
 
+function coerceValue(raw: string): PropertyValue {
+  const trimmed = raw.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (trimmed !== "" && Number.isFinite(Number(trimmed))) return Number(trimmed);
+  return raw;
+}
+
 function WorldInspector({ project, setProject, selection, onInteract }: Props) {
   const entity = project.entities.find((item) => item.id === selection.entityId);
   if (!entity) {
@@ -154,7 +164,7 @@ function WorldInspector({ project, setProject, selection, onInteract }: Props) {
         ))}
       </Section>
 
-      <Section title="World state">
+      <Section title="World state" action={<button className="mini-action" onClick={() => setProperty(`custom${Object.keys(entity.properties).length + 1}`, 0)}>+ Property</button>}>
         <Toggle
           checked={entity.active}
           label="Active in simulation"
@@ -188,6 +198,34 @@ function WorldInspector({ project, setProject, selection, onInteract }: Props) {
       </Section>
 
       <Section title="Identity">
+        <label className="inline-field">
+          <span>Name</span>
+          <input
+            value={entity.name}
+            onChange={(event) => setProject((current) => updateEntity(current, entity.id, (item) => ({ ...item, name: event.target.value })))}
+          />
+        </label>
+        <label className="inline-field">
+          <span>Kind</span>
+          <select
+            value={entity.kind}
+            onChange={(event) => setProject((current) => updateEntity(current, entity.id, (item) => ({ ...item, kind: event.target.value as EntityKind })))}
+          >
+            {(["player", "npc", "prop", "door", "item", "building", "light", "zone"] as EntityKind[]).map((kind) => (
+              <option key={kind} value={kind}>{kind}</option>
+            ))}
+          </select>
+        </label>
+        <label className="inline-field">
+          <span>Tags</span>
+          <input
+            value={entity.tags.join(", ")}
+            onChange={(event) => setProject((current) => updateEntity(current, entity.id, (item) => ({
+              ...item,
+              tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean)
+            })))}
+          />
+        </label>
         <div className="tag-wrap">
           {entity.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
         </div>
@@ -230,6 +268,68 @@ function ImprintInspector({ project, setProject, selection, setSelection }: Prop
     }));
   };
 
+
+  const nodeOptions = [
+    { id: "world", label: "World" },
+    ...project.entities.map((entity) => ({ id: entity.id, label: entity.name })),
+    ...project.npcs.map((npc) => ({ id: npc.id, label: npc.displayName }))
+  ];
+
+  const patchTrigger = (trigger: ImprintRule["trigger"]) => patch({ trigger });
+
+  const setTriggerType = (type: string) => {
+    if (type === "interaction") patchTrigger({ type: "interaction", sourceId: "player", targetId: selection.entityId ?? "gate" });
+    if (type === "proximity") patchTrigger({ type: "proximity", sourceId: "player", targetId: selection.entityId ?? "gate", radius: 3 });
+    if (type === "timer") patchTrigger({ type: "timer", everyMs: 5000 });
+    if (type === "state") patchTrigger({ type: "state", sourceId: "world", path: "flags.townPower" });
+  };
+
+  const addCondition = () => {
+    if (!selected) return;
+    patch({
+      conditions: [...selected.conditions, {
+        id: uid("cond"),
+        sourceId: selection.entityId ?? "world",
+        path: selection.entityId ? "properties.active" : "flags.townPower",
+        operator: "eq",
+        value: true
+      }]
+    });
+  };
+
+  const patchCondition = (id: string, changes: Partial<ImprintRule["conditions"][number]>) => {
+    if (!selected) return;
+    patch({ conditions: selected.conditions.map((condition) => condition.id === id ? { ...condition, ...changes } : condition) });
+  };
+
+  const removeCondition = (id: string) => {
+    if (!selected) return;
+    patch({ conditions: selected.conditions.filter((condition) => condition.id !== id) });
+  };
+
+  const addEffect = () => {
+    if (!selected) return;
+    patch({
+      effects: [...selected.effects, {
+        id: uid("effect"),
+        targetId: selection.entityId ?? "world",
+        path: selection.entityId ? "properties.active" : "flags.custom",
+        operation: "set",
+        value: true
+      }]
+    });
+  };
+
+  const patchEffect = (id: string, changes: Partial<ImprintRule["effects"][number]>) => {
+    if (!selected) return;
+    patch({ effects: selected.effects.map((effect) => effect.id === id ? { ...effect, ...changes } : effect) });
+  };
+
+  const removeEffect = (id: string) => {
+    if (!selected) return;
+    patch({ effects: selected.effects.filter((effect) => effect.id !== id) });
+  };
+
   return (
     <>
       <div className="panel-toolbar">
@@ -256,35 +356,65 @@ function ImprintInspector({ project, setProject, selection, setSelection }: Prop
             <Toggle checked={selected.enabled} label="Enabled" onChange={(enabled) => patch({ enabled })} />
           </Section>
           <Section title="Trigger">
-            <div className="logic-card">
-              <span className="logic-glyph">◎</span>
-              <div>
-                <strong>{selected.trigger.type}</strong>
-                <small>
-                  {selected.trigger.type === "interaction"
-                    ? `${selected.trigger.sourceId} → ${selected.trigger.targetId}`
-                    : "World-driven trigger"}
-                </small>
+            <label className="inline-field">
+              <span>Type</span>
+              <select value={selected.trigger.type} onChange={(event) => setTriggerType(event.target.value)}>
+                <option value="interaction">interaction</option>
+                <option value="proximity">proximity</option>
+                <option value="timer">timer</option>
+                <option value="state">state</option>
+              </select>
+            </label>
+            {selected.trigger.type === "interaction" && (
+              <div className="logic-editor-stack">
+                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value })}>{nodeOptions.filter((n) => n.id !== "world").map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</select></label>
+                <label><span>Target</span><select value={selected.trigger.targetId} onChange={(e) => patchTrigger({ ...selected.trigger, targetId: e.target.value })}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
               </div>
-            </div>
+            )}
+            {selected.trigger.type === "proximity" && (
+              <div className="logic-editor-stack">
+                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value })}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+                <label><span>Target</span><select value={selected.trigger.targetId} onChange={(e) => patchTrigger({ ...selected.trigger, targetId: e.target.value })}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+                <label><span>Radius</span><input type="number" min="0.1" step="0.1" value={selected.trigger.radius} onChange={(e) => patchTrigger({ ...selected.trigger, radius: Math.max(0.1, Number(e.target.value)) })} /></label>
+              </div>
+            )}
+            {selected.trigger.type === "timer" && (
+              <label className="inline-field"><span>Every</span><input type="number" min="100" step="100" value={selected.trigger.everyMs} onChange={(e) => patchTrigger({ ...selected.trigger, everyMs: Math.max(100, Number(e.target.value)) })} /><em>ms</em></label>
+            )}
+            {selected.trigger.type === "state" && (
+              <div className="logic-editor-stack">
+                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value })}>{nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</select></label>
+                <label><span>Path</span><input value={selected.trigger.path} onChange={(e) => patchTrigger({ ...selected.trigger, path: e.target.value })} /></label>
+              </div>
+            )}
           </Section>
-          <Section title="Current state · conditions">
+
+          <Section title="Current state · conditions" action={<button className="mini-action" onClick={addCondition}>+ Condition</button>}>
             {selected.conditions.length === 0 && <p className="muted">No conditions yet — the trigger can run whenever it occurs.</p>}
             {selected.conditions.map((condition) => (
-              <div className="logic-line" key={condition.id}>
-                <code>{condition.sourceId}.{condition.path}</code>
-                <span>{condition.operator}</span>
-                <b>{String(condition.value)}</b>
+              <div className="logic-editor-row" key={condition.id}>
+                <select value={condition.sourceId} onChange={(e) => patchCondition(condition.id, { sourceId: e.target.value })}>{nodeOptions.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}</select>
+                <input aria-label="Condition path" value={condition.path} onChange={(e) => patchCondition(condition.id, { path: e.target.value })} />
+                <select value={condition.operator} onChange={(e) => patchCondition(condition.id, { operator: e.target.value as typeof condition.operator })}>
+                  {["eq", "neq", "gt", "gte", "lt", "lte", "includes"].map((operator) => <option key={operator} value={operator}>{operator}</option>)}
+                </select>
+                <input aria-label="Condition value" value={String(condition.value ?? "")} onChange={(e) => patchCondition(condition.id, { value: coerceValue(e.target.value) })} />
+                <button className="danger-mini" onClick={() => removeCondition(condition.id)}>×</button>
               </div>
             ))}
           </Section>
-          <Section title="Desired state · changes">
+
+          <Section title="Desired state · changes" action={<button className="mini-action" onClick={addEffect}>+ Change</button>}>
             {selected.effects.length === 0 && <p className="muted">Add desired state changes to teach the world what should become different.</p>}
             {selected.effects.map((effect) => (
-              <div className="logic-line effect" key={effect.id}>
-                <code>{effect.targetId}.{effect.path}</code>
-                <span>{effect.operation}</span>
-                <b>{String(effect.value)}</b>
+              <div className="logic-editor-row effect" key={effect.id}>
+                <select value={effect.targetId} onChange={(e) => patchEffect(effect.id, { targetId: e.target.value })}>{nodeOptions.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}</select>
+                <input aria-label="Effect path" value={effect.path} onChange={(e) => patchEffect(effect.id, { path: e.target.value })} />
+                <select value={effect.operation} onChange={(e) => patchEffect(effect.id, { operation: e.target.value as typeof effect.operation })}>
+                  {["set", "add", "subtract", "toggle"].map((operation) => <option key={operation} value={operation}>{operation}</option>)}
+                </select>
+                <input aria-label="Effect value" value={String(effect.value ?? "")} onChange={(e) => patchEffect(effect.id, { value: coerceValue(e.target.value) })} disabled={effect.operation === "toggle"} />
+                <button className="danger-mini" onClick={() => removeEffect(effect.id)}>×</button>
               </div>
             ))}
           </Section>
@@ -319,6 +449,22 @@ function WeaveInspector({ project, setProject, selection }: Props) {
     }));
   };
 
+
+  const nodes = [
+    ...project.entities.map((entity) => ({ id: entity.id, label: entity.name })),
+    ...project.npcs.map((npc) => ({ id: npc.id, label: npc.displayName }))
+  ];
+  const patchRelation = (id: string, changes: Partial<VeryaProject["weave"][number]>) => {
+    setProject((current) => ({
+      ...current,
+      weave: current.weave.map((relation) => relation.id === id ? { ...relation, ...changes } : relation)
+    }));
+  };
+  const removeRelation = (id: string) => setProject((current) => ({
+    ...current,
+    weave: current.weave.filter((relation) => relation.id !== id)
+  }));
+
   return (
     <>
       <div className="panel-toolbar">
@@ -338,12 +484,15 @@ function WeaveInspector({ project, setProject, selection }: Props) {
       </div>
       <Section title="Relationships">
         {project.weave.map((relation) => (
-          <div className="relation-row" key={relation.id}>
-            <span className="relation-kind">{relation.kind}</span>
-            <code>{relation.fromId}</code>
+          <div className="relation-editor" key={relation.id}>
+            <select value={relation.kind} onChange={(e) => patchRelation(relation.id, { kind: e.target.value as typeof relation.kind })}>
+              {["owns", "needs", "supplies", "trusts", "works-at", "lives-at", "powers", "unlocks", "friend", "rival", "knows", "custom"].map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+            </select>
+            <select value={relation.fromId} onChange={(e) => patchRelation(relation.id, { fromId: e.target.value })}>{nodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}</select>
             <span>→</span>
-            <code>{relation.toId}</code>
-            <b>{Math.round(relation.strength * 100)}%</b>
+            <select value={relation.toId} onChange={(e) => patchRelation(relation.id, { toId: e.target.value })}>{nodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}</select>
+            <label className="relation-strength"><input type="range" min="0" max="100" value={relation.strength * 100} onChange={(e) => patchRelation(relation.id, { strength: Number(e.target.value) / 100 })} /><b>{Math.round(relation.strength * 100)}%</b></label>
+            <button className="danger-mini" onClick={() => removeRelation(relation.id)}>×</button>
           </div>
         ))}
       </Section>
@@ -364,6 +513,30 @@ function BodyInspector({ project, setProject, selection, setSelection }: Props) 
     ...current,
     rigs: current.rigs.map((item) => item.id === rig.id ? { ...item, ...changes } : item)
   }));
+
+
+  const patchJoint = (jointId: string, changes: Partial<(typeof rig.joints)[number]>) => {
+    patchRig({ joints: rig.joints.map((joint) => joint.id === jointId ? { ...joint, ...changes } : joint) });
+  };
+  const addJoint = () => {
+    const id = uid("joint");
+    patchRig({
+      anatomy: "custom",
+      joints: [...rig.joints, {
+        id,
+        name: "Custom Joint",
+        parentId: rig.joints[0]?.id,
+        position: { x: 0, y: 1, z: 0 },
+        restRotation: { x: 0, y: 0, z: 0 },
+        limit: { min: { x: -90, y: -90, z: -90 }, max: { x: 90, y: 90, z: 90 } },
+        role: "custom"
+      }]
+    });
+  };
+  const removeJoint = (jointId: string) => patchRig({
+    joints: rig.joints.filter((joint) => joint.id !== jointId),
+    chains: rig.chains.map((chain) => ({ ...chain, jointIds: chain.jointIds.filter((id) => id !== jointId) }))
+  });
 
   return (
     <>
@@ -388,15 +561,22 @@ function BodyInspector({ project, setProject, selection, setSelection }: Props) 
           <div><b>{rig.chains.length}</b><span>chains</span></div>
           <div><b>{rig.anatomy}</b><span>anatomy</span></div>
         </div>
+        <label className="inline-field"><span>Anatomy</span><select value={rig.anatomy} onChange={(e) => patchRig({ anatomy: e.target.value as typeof rig.anatomy })}><option value="humanoid">humanoid</option><option value="quadruped">quadruped</option><option value="winged">winged</option><option value="custom">custom</option></select></label>
         <Toggle checked={rig.mirrorEditing} label="Mirror joint edits" onChange={(mirrorEditing) => patchRig({ mirrorEditing })} />
       </Section>
-      <Section title="Joint atlas">
+      <Section title="Joint atlas" action={<button className="mini-action" onClick={addJoint}>+ Joint</button>}>
         <div className="joint-list">
           {rig.joints.map((joint) => (
-            <div className="joint-row" key={joint.id}>
+            <div className="joint-editor" key={joint.id}>
               <span className="joint-icon">◇</span>
-              <div><strong>{joint.name}</strong><small>{joint.role} · parent {joint.parentId ?? "world"}</small></div>
-              <em>{joint.limit.min.x}°…{joint.limit.max.x}°</em>
+              <input value={joint.name} onChange={(e) => patchJoint(joint.id, { name: e.target.value })} />
+              <select value={joint.role} onChange={(e) => patchJoint(joint.id, { role: e.target.value as typeof joint.role })}>
+                {["root", "spine", "head", "arm", "hand", "leg", "foot", "tail", "wing", "custom"].map((role) => <option key={role} value={role}>{role}</option>)}
+              </select>
+              {(["x", "y", "z"] as const).map((axis) => (
+                <label className="joint-axis" key={axis}><span>{axis}</span><input type="number" step="0.05" value={joint.position[axis]} onChange={(e) => patchJoint(joint.id, { position: { ...joint.position, [axis]: Number(e.target.value) } })} /></label>
+              ))}
+              {joint.role === "custom" ? <button className="danger-mini" onClick={() => removeJoint(joint.id)}>×</button> : <span />}
             </div>
           ))}
         </div>
@@ -424,11 +604,45 @@ function MotionInspector({ project, setProject, selection, setSelection }: Props
   const patchCharacter = (key: keyof typeof clip.character, value: number) =>
     patch({ character: { ...clip.character, [key]: value } });
 
+
+  const createMotion = () => {
+    const id = uid("motion");
+    const motion: VeryaProject["motions"][number] = {
+      id,
+      name: "Custom Motion",
+      rigId: selection.rigId,
+      durationMs: 1200,
+      loop: false,
+      tags: ["custom"],
+      character: { energy: 0.5, weight: 0.5, smoothness: 0.7, exaggeration: 0.3 },
+      poses: [
+        { id: uid("pose"), at: 0, joints: [] },
+        { id: uid("pose"), at: 1, joints: [] }
+      ]
+    };
+    setProject((current) => ({ ...current, motions: [...current.motions, motion] }));
+    setSelection((current) => ({ ...current, motionId: id }));
+  };
+
+  const addPose = () => {
+    const poses = [...clip.poses, { id: uid("pose"), at: 0.5, joints: [] }].sort((a, b) => a.at - b.at);
+    patch({ poses });
+  };
+
+  const patchPose = (poseId: string, at: number) => patch({
+    poses: clip.poses.map((pose) => pose.id === poseId ? { ...pose, at: Math.max(0, Math.min(1, at)) } : pose).sort((a, b) => a.at - b.at)
+  });
+
+  const removePose = (poseId: string) => {
+    if (clip.poses.length <= 2) return;
+    patch({ poses: clip.poses.filter((pose) => pose.id !== poseId) });
+  };
+
   return (
     <>
       <div className="panel-toolbar">
         <div><span className="eyebrow">MOVEMENT AUTHORING</span><strong>Motion Atlas</strong></div>
-        <span className="pill positive">{clip.loop ? "loop" : "one-shot"}</span>
+        <div className="toolbar-cluster"><span className="pill positive">{clip.loop ? "loop" : "one-shot"}</span><button className="primary small" onClick={createMotion}>+ Motion</button></div>
       </div>
       <div className="motion-library">
         {project.motions.map((motion) => (
@@ -443,12 +657,19 @@ function MotionInspector({ project, setProject, selection, setSelection }: Props
           </button>
         ))}
       </div>
-      <Section title="Motion imprint">
+      <Section title="Motion identity">
+        <label className="inline-field"><span>Name</span><input value={clip.name} onChange={(e) => patch({ name: e.target.value })} /></label>
+        <label className="inline-field"><span>Duration</span><input type="number" min="100" step="50" value={clip.durationMs} onChange={(e) => patch({ durationMs: Math.max(100, Number(e.target.value)) })} /><em>ms</em></label>
+        <label className="inline-field"><span>Tags</span><input value={clip.tags.join(", ")} onChange={(e) => patch({ tags: e.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })} /></label>
+      </Section>
+      <Section title="Motion imprint" action={<button className="mini-action" onClick={addPose}>+ Pose</button>}>
         <div className="pose-strip">
           {clip.poses.map((pose, index) => (
             <div className="pose" key={pose.id}>
               <div className="mini-person"><i /><b /><em /></div>
               <span>{index === 0 ? "Start" : index === clip.poses.length - 1 ? "End" : `${Math.round(pose.at * 100)}%`}</span>
+              <input className="pose-time" type="number" min="0" max="1" step="0.05" value={pose.at} onChange={(e) => patchPose(pose.id, Number(e.target.value))} />
+              {index > 0 && index < clip.poses.length - 1 && <button className="pose-remove" onClick={() => removePose(pose.id)}>×</button>}
             </div>
           ))}
           <div className="pose-line" />
@@ -510,13 +731,58 @@ function EchoInspector({ project, setProject, selection, setSelection }: Props) 
   const patch = (changes: Partial<Npc>) => setProject((current) => updateNpc(current, npc.id, (item) => ({ ...item, ...changes })));
   const job = project.jobs.find((item) => item.id === npc.career.jobId);
 
+
+  const createActor = () => {
+    const entityId = uid("actor");
+    const npcId = uid("npc");
+    const index = project.npcs.length + 1;
+    const entity: WorldEntity = {
+      id: entityId,
+      name: `New Actor ${index}`,
+      kind: "npc",
+      position: { x: 4 + (index % 5), y: 0, z: 5 + ((index * 2) % 6) },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      visible: true,
+      active: true,
+      tags: ["person"],
+      properties: { mood: 0.6 },
+      npcId
+    };
+    const actor: Npc = {
+      id: npcId,
+      entityId,
+      displayName: `New Actor ${index}`,
+      ageBand: "adult",
+      traits: { curiosity: 0.5, sociability: 0.5, ambition: 0.5, caution: 0.5, persistence: 0.5 },
+      interests: { cooking: 0.3, travel: 0.3, crafting: 0.3, community: 0.3 },
+      skills: { cooking: 0.2, delivery: 0.2, crafting: 0.2, leadership: 0.2 },
+      needs: { energy: 0.8, food: 0.8, social: 0.7, safety: 0.8, purpose: 0.7, comfort: 0.7 },
+      relationships: [],
+      memories: [],
+      goals: [],
+      career: { level: 1, satisfaction: 0.5, history: [] },
+      autonomy: "adaptive",
+      money: 100,
+      currentAction: "Getting oriented",
+      currentMotionId: "motion_idle",
+      protectedRole: false,
+      lastDecisionAt: Date.now()
+    };
+    setProject((current) => ({ ...current, entities: [...current.entities, entity], npcs: [...current.npcs, actor], updatedAt: Date.now() }));
+    setSelection({ workspace: "echo", entityId, npcId });
+  };
+
   return (
     <>
       <div className="panel-toolbar">
         <div><span className="eyebrow">LIVING WORLD ENGINE</span><strong>ECHO</strong></div>
-        <select value={npc.id} onChange={(e) => setSelection((current) => ({ ...current, npcId: e.target.value }))}>
-          {project.npcs.map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}
-        </select>
+        <div className="toolbar-cluster">
+          <select value={npc.id} onChange={(e) => setSelection((current) => ({ ...current, npcId: e.target.value, entityId: project.npcs.find((item) => item.id === e.target.value)?.entityId }))}>
+            {project.npcs.map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}
+          </select>
+          <button className="primary small" onClick={createActor}>+ Actor</button>
+        </div>
       </div>
       <div className="npc-hero">
         <div className="npc-avatar">{npc.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2)}</div>
@@ -598,6 +864,11 @@ function EmergenceInspector({ project, setProject }: Props) {
         <Toggle checked={project.settings.allowCareerChanges} label="NPC career changes" onChange={(value) => patchSettings({ allowCareerChanges: value })} />
         <Toggle checked={project.settings.allowRelationshipEvolution} label="Relationships evolve" onChange={(value) => patchSettings({ allowRelationshipEvolution: value })} />
         <Toggle checked={project.settings.allowWorldChangingDecisions} label="World-changing decisions" onChange={(value) => patchSettings({ allowWorldChangingDecisions: value })} />
+        <Toggle checked={project.settings.simulateWhenHidden} label="Catch up while closed/hidden" onChange={(value) => patchSettings({ simulateWhenHidden: value })} />
+        <label className="range-field">
+          <span>Detailed NPC budget <b>{project.settings.maxDetailedNpcs}</b></span>
+          <input type="range" min="1" max="100" value={project.settings.maxDetailedNpcs} onChange={(e) => patchSettings({ maxDetailedNpcs: Number(e.target.value) })} />
+        </label>
       </Section>
       <Section title="World economy">
         <div className="economy-grid">
