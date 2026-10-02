@@ -36,18 +36,24 @@ export default function Studio() {
   const importInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setProject(loadProject());
-    setLoaded(true);
+    const handle = window.setTimeout(() => {
+      setProject(loadProject());
+      setLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(handle);
   }, []);
 
   useEffect(() => {
     if (!loaded) return;
-    setSaveState("saving");
-    const handle = window.setTimeout(() => {
+    const savingHandle = window.setTimeout(() => setSaveState("saving"), 0);
+    const saveHandle = window.setTimeout(() => {
       saveProject(project);
       setSaveState("saved");
     }, 220);
-    return () => window.clearTimeout(handle);
+    return () => {
+      window.clearTimeout(savingHandle);
+      window.clearTimeout(saveHandle);
+    };
   }, [project, loaded]);
 
   useEffect(() => {
