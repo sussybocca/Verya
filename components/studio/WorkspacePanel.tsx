@@ -367,24 +367,24 @@ function ImprintInspector({ project, setProject, selection, setSelection }: Prop
             </label>
             {selected.trigger.type === "interaction" && (
               <div className="logic-editor-stack">
-                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value })}>{nodeOptions.filter((n) => n.id !== "world").map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</select></label>
-                <label><span>Target</span><select value={selected.trigger.targetId} onChange={(e) => patchTrigger({ ...selected.trigger, targetId: e.target.value })}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value } as ImprintRule["trigger"])}>{nodeOptions.filter((n) => n.id !== "world").map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</select></label>
+                <label><span>Target</span><select value={selected.trigger.targetId} onChange={(e) => patchTrigger({ ...selected.trigger, targetId: e.target.value } as ImprintRule["trigger"])}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
               </div>
             )}
             {selected.trigger.type === "proximity" && (
               <div className="logic-editor-stack">
-                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value })}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
-                <label><span>Target</span><select value={selected.trigger.targetId} onChange={(e) => patchTrigger({ ...selected.trigger, targetId: e.target.value })}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
-                <label><span>Radius</span><input type="number" min="0.1" step="0.1" value={selected.trigger.radius} onChange={(e) => patchTrigger({ ...selected.trigger, radius: Math.max(0.1, Number(e.target.value)) })} /></label>
+                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value } as ImprintRule["trigger"])}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+                <label><span>Target</span><select value={selected.trigger.targetId} onChange={(e) => patchTrigger({ ...selected.trigger, targetId: e.target.value } as ImprintRule["trigger"])}>{project.entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></label>
+                <label><span>Radius</span><input type="number" min="0.1" step="0.1" value={selected.trigger.radius} onChange={(e) => patchTrigger({ ...selected.trigger, radius: Math.max(0.1, Number(e.target.value)) } as ImprintRule["trigger"])} /></label>
               </div>
             )}
             {selected.trigger.type === "timer" && (
-              <label className="inline-field"><span>Every</span><input type="number" min="100" step="100" value={selected.trigger.everyMs} onChange={(e) => patchTrigger({ ...selected.trigger, everyMs: Math.max(100, Number(e.target.value)) })} /><em>ms</em></label>
+              <label className="inline-field"><span>Every</span><input type="number" min="100" step="100" value={selected.trigger.everyMs} onChange={(e) => patchTrigger({ ...selected.trigger, everyMs: Math.max(100, Number(e.target.value)) } as ImprintRule["trigger"])} /><em>ms</em></label>
             )}
             {selected.trigger.type === "state" && (
               <div className="logic-editor-stack">
-                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value })}>{nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</select></label>
-                <label><span>Path</span><input value={selected.trigger.path} onChange={(e) => patchTrigger({ ...selected.trigger, path: e.target.value })} /></label>
+                <label><span>Source</span><select value={selected.trigger.sourceId} onChange={(e) => patchTrigger({ ...selected.trigger, sourceId: e.target.value } as ImprintRule["trigger"])}>{nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</select></label>
+                <label><span>Path</span><input value={selected.trigger.path} onChange={(e) => patchTrigger({ ...selected.trigger, path: e.target.value } as ImprintRule["trigger"])} /></label>
               </div>
             )}
           </Section>
