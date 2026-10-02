@@ -37,7 +37,7 @@ export function interact(project: VeryaProject, sourceId: string, targetId: stri
     trace: [{
       id: uid("trace"),
       at: Date.now(),
-      category: "system",
+      category: "system" as const,
       title: "Interaction had no matching Imprint",
       detail: `${sourceId} interacted with ${targetId}; no enabled rule matched the current world state.`,
       subjectIds: [sourceId, targetId]
