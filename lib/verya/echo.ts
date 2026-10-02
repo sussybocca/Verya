@@ -104,7 +104,7 @@ function actOnCandidate(project: VeryaProject, npc: Npc, candidate: Candidate, n
       if (shared && !memories.some((memory) => memory.summary.includes(shared.summary))) {
         memories = [{
           id: uid("mem"),
-          kind: "event",
+          kind: "event" as const,
           summary: `Heard from ${partner.displayName}: ${shared.summary}`,
           subjectIds: [next.id, partner.id, ...shared.subjectIds].slice(0, 5),
           importance: clamp(shared.importance * 0.55),
@@ -152,7 +152,7 @@ function actOnCandidate(project: VeryaProject, npc: Npc, candidate: Candidate, n
       memories: [
         {
           id: uid("mem"),
-          kind: "career",
+          kind: "career" as const,
           summary: `Began working as ${candidate.job.title}.`,
           subjectIds: [next.id, workplaceId ?? candidate.job.id],
           importance: 0.72,
