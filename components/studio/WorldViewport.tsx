@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Component, type ReactNode, useEffect, useMemo, useRef } from "react";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { WorldEntity } from "@/lib/verya/types";
 
@@ -159,33 +159,13 @@ class ViewportBoundary extends Component<{ children: ReactNode; fallback: ReactN
 
 export default function WorldViewport(props: Props) {
   const { entities, selectedId, onSelect, playMode } = props;
-  const [webgl, setWebgl] = useState<"checking" | "ready" | "unavailable">("checking");
-
-  useEffect(() => {
-    try {
-      const probe = document.createElement("canvas");
-      const context =
-        probe.getContext("webgl2", { failIfMajorPerformanceCaveat: false }) ??
-        probe.getContext("webgl", { failIfMajorPerformanceCaveat: false });
-      setWebgl(context ? "ready" : "unavailable");
-      context?.getExtension("WEBGL_lose_context")?.loseContext();
-    } catch {
-      setWebgl("unavailable");
-    }
-  }, []);
 
   const fallback = (
     <SafeMapFallback
       {...props}
-      message={
-        webgl === "checking"
-          ? "Checking 3D support…"
-          : "3D rendering was unavailable, so Verya switched to the safe map view instead of crashing."
-      }
+      message="3D rendering was unavailable, so Verya switched to the safe map view instead of crashing."
     />
   );
-
-  if (webgl !== "ready") return fallback;
 
   return (
     <ViewportBoundary fallback={fallback}>
