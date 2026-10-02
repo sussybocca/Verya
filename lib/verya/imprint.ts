@@ -63,13 +63,14 @@ function conditionsPass(project: VeryaProject, rule: ImprintRule): boolean {
 
 function proximityPass(project: VeryaProject, rule: ImprintRule): boolean {
   if (rule.trigger.type !== "proximity") return true;
-  const a = project.entities.find((e) => e.id === rule.trigger.sourceId);
-  const b = project.entities.find((e) => e.id === rule.trigger.targetId);
+  const trigger = rule.trigger;
+  const a = project.entities.find((e) => e.id === trigger.sourceId);
+  const b = project.entities.find((e) => e.id === trigger.targetId);
   if (!a || !b) return false;
   const dx = a.position.x - b.position.x;
   const dy = a.position.y - b.position.y;
   const dz = a.position.z - b.position.z;
-  return Math.hypot(dx, dy, dz) <= rule.trigger.radius;
+  return Math.hypot(dx, dy, dz) <= trigger.radius;
 }
 
 export function runImprints(project: VeryaProject, command: RuntimeCommand): VeryaProject {
